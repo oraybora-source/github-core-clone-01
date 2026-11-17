@@ -3,7 +3,7 @@
 // protocol is implemented from the wire format: pkt-lines, sideband
 // framing, packfiles, and the negotiation the suite's git client runs.
 
-import { readPack, writePack, verifyPackChecksum, pktLine, encodePktLines, decodePktLines, sidebandPack, PKT_DELIM, PKT_FLUSH, ZERO_OID } from './pack.js';
+import { readPack, writePack, verifyPackChecksum, pktLine, encodePktLines, decodePktLines, sidebandPack, SIDEBAND_CHUNK, PKT_DELIM, PKT_FLUSH, ZERO_OID } from './pack.js';
 import { parseCommit, parseTree, parseTag } from './objects.js';
 
 const AGENT = 'github-core-clone-01/1.0.0';
@@ -551,9 +551,8 @@ export function handleReceivePack(forge, owner, repoName, body, send) {
   const framedReport = Buffer.concat([encodePktLines(report), Buffer.from('0000', 'ascii')]);
   if (sideband) {
     const parts = [];
-    const CHUNK = 65520;
-    for (let at = 0; at < framedReport.length; at += CHUNK) {
-      const chunk = framedReport.subarray(at, Math.min(at + CHUNK, framedReport.length));
+    for (let at = 0; at < framedReport.length; at += SIDEBAND_CHUNK) {
+      const chunk = framedReport.subarray(at, Math.min(at + SIDEBAND_CHUNK, framedReport.length));
       parts.push(pktLine(Buffer.concat([Buffer.from([1]), chunk])));
     }
     parts.push(Buffer.from('0000', 'ascii'));

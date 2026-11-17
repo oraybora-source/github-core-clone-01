@@ -308,12 +308,16 @@ export function decodePktLines(buffer) {
 }
 
 // Frame pack bytes as sideband packets: each pkt-line payload starts with
-// the band byte (1 = pack data) and carries at most 65520 bytes of data.
+// the band byte (1 = pack data). A pkt-line is at most 65520 bytes long
+// INCLUDING its 4-byte length prefix, so the band byte plus the chunk it
+// carries is at most 65516 bytes — the chunk itself at most 65515. (A
+// 65520-byte chunk makes a 65525-byte pkt-line, which a strict reader
+// rejects; real git tolerates it, the kit's client does not.)
+export const SIDEBAND_CHUNK = 65515;
 export function sidebandPack(pack) {
   const parts = [];
-  const CHUNK = 65520;
-  for (let offset = 0; offset < pack.length; offset += CHUNK) {
-    const chunk = pack.subarray(offset, Math.min(offset + CHUNK, pack.length));
+  for (let offset = 0; offset < pack.length; offset += SIDEBAND_CHUNK) {
+    const chunk = pack.subarray(offset, Math.min(offset + SIDEBAND_CHUNK, pack.length));
     const payload = Buffer.concat([Buffer.from([1]), chunk]);
     parts.push(pktLine(payload));
   }

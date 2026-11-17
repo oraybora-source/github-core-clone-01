@@ -344,10 +344,14 @@ export class Forge {
 
   // Whether a pull request can merge cleanly, and the merged file map
   // when it can. A three-way merge of base, head and their merge base:
-  // a path changed on both sides to different contents conflicts.
+  // a path changed on both sides to different contents conflicts. The
+  // base (and head) are resolved from their branch refs LIVE at merge
+  // time — the pull's captured baseSha is only the tip when the pull
+  // was opened, and the base may have moved since (a merge of another
+  // pull must be able to conflict with this one).
   mergeable(repo, pull) {
-    const headOid = repo.store.peel(pull.headSha);
-    const baseOid = repo.store.peel(pull.baseSha);
+    const headOid = repo.store.peel(repo.refs.get(`refs/heads/${pull.headRef}`) || pull.headSha);
+    const baseOid = repo.store.peel(repo.refs.get(`refs/heads/${pull.baseRef}`) || pull.baseSha);
     const mergeBase = repo.store.mergeBase(headOid, baseOid);
     if (!mergeBase) return { ok: false, conflict: true, merged: null };
     const baseFiles = this.filesAtCommit(repo, mergeBase);
