@@ -1,0 +1,1 @@
+{"description":"github-core-clone-01 — a standalone GitHub-compatible git forge (REST v3, GraphQL, MCP, git smart HTTP) built for make.fun","engines":{"node":">=22.18"},"license":"MIT","name":"github-core-clone-01","private":true,"scripts":{"start":"node --experimental-strip-types main.ts"},"type":"module","version":"1.0.0"}
