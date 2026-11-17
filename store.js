@@ -241,6 +241,9 @@ export class Forge {
       state: 'open',
       labels: labels.map((label) => ({ name: label.name, color: label.color })),
       seq: repo.nextSeq(),
+      // Revision: bumps on every patch, so a cached serialized issue
+      // view is retired the moment the issue changes.
+      rev: 0,
     };
     repo.issues.push(issue);
     return { issue };
@@ -256,6 +259,7 @@ export class Forge {
     if (patch.state === 'open' || patch.state === 'closed') issue.state = patch.state;
     if (typeof patch.title === 'string') issue.title = patch.title;
     if (typeof patch.body === 'string') issue.body = patch.body;
+    issue.rev += 1;
     return issue;
   }
 

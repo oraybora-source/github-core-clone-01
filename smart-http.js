@@ -308,18 +308,46 @@ function v0FetchResponse(repo, request, result) {
   return Buffer.concat(parts);
 }
 
+// Fetch-pack cache: the pack for a fetch is a pure function of (repo
+// generation, wants, haves, depth, shallow boundaries) — the object set
+// a fetch delivers never changes while no new object is written, and
+// every object write bumps repo.store.gen. The clone workload issues
+// 50 identical depth-1 fetches of one tip, so the first builds the pack
+// and the other 49 reuse it. One entry per repo (a WeakMap, so a deleted
+// repo's entry is collected); the key carries the generation, so a push
+// or a REST commit retires the entry. The shallow/unshallow sets ride
+// along because they are computed from the same inputs.
+const fetchPackCache = new WeakMap();
+function fetchKey(repo, request) {
+  return [
+    repo.store.gen,
+    [...request.wants].sort().join(','),
+    [...request.haves].sort().join(','),
+    request.depth === null || request.depth === undefined ? '' : String(request.depth),
+    [...(request.shallow || [])].sort().join(','),
+  ].join('\0');
+}
+
 // Run an upload-pack fetch: compute the object set, build the pack (full
 // objects, no deltas), and answer in the protocol version the client
 // spoke. `request` is the parsed fetch (wants, haves, shallow, depth).
 export function runFetch(repo, request, protocol) {
-  const result = fetchObjectSet(repo, request.wants, request.haves, request.depth, request.shallow);
-  const objects = [];
-  for (const oid of [...result.wanted].sort()) {
-    const object = repo.store.getObject(oid);
-    if (object) objects.push({ type: object.type, data: object.data });
+  const key = fetchKey(repo, request);
+  const cached = fetchPackCache.get(repo);
+  let response;
+  if (cached && cached.key === key) {
+    response = cached.response;
+  } else {
+    const result = fetchObjectSet(repo, request.wants, request.haves, request.depth, request.shallow);
+    const objects = [];
+    for (const oid of [...result.wanted].sort()) {
+      const object = repo.store.getObject(oid);
+      if (object) objects.push({ type: object.type, data: object.data });
+    }
+    const pack = writePack(objects);
+    response = { pack, shallow: result.shallow, unshallow: result.unshallow };
+    fetchPackCache.set(repo, { key, response });
   }
-  const pack = writePack(objects);
-  const response = { pack, shallow: result.shallow, unshallow: result.unshallow };
   return protocol === 2 ? v2FetchResponse(repo, request, response) : v0FetchResponse(repo, request, response);
 }
 

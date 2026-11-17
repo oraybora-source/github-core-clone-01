@@ -13,6 +13,26 @@ function json(status, value, extra) {
   return { status, headers: { 'content-type': 'application/json', ...(extra || {}) }, body: JSON.stringify(value) };
 }
 
+// Answer with an already-serialized JSON string (a cache hit), without
+// re-stringifying it.
+function jsonBody(status, body, extra) {
+  return { status, headers: { 'content-type': 'application/json', ...(extra || {}) }, body };
+}
+
+// Serialized single-issue views, keyed by the issue object: the read
+// workload GETs the same issue 2,000 times, and the view is a pure
+// function of the issue's fields. The entry carries the issue's
+// revision, so a patch retires it. A WeakMap, so a deleted repo's
+// issues are collected.
+const issueViewCache = new WeakMap();
+function cachedIssueView(issue) {
+  const cached = issueViewCache.get(issue);
+  if (cached && cached.rev === issue.rev) return cached.body;
+  const body = JSON.stringify(issueView(issue));
+  issueViewCache.set(issue, { rev: issue.rev, body });
+  return body;
+}
+
 function message(status, text) {
   return json(status, { message: text });
 }
@@ -379,7 +399,7 @@ function routeIssues(forge, repo, method, tail, query, input) {
   const issue = forge.getIssue(repo, number);
   if (tail.length === 1) {
     if (!issue) return notFound();
-    if (method === 'GET') return json(200, issueView(issue));
+    if (method === 'GET') return jsonBody(200, cachedIssueView(issue));
     if (method === 'PATCH') {
       const updated = forge.patchIssue(repo, number, input);
       if (!updated) return notFound();

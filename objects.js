@@ -148,6 +148,12 @@ export function buildTreeFromFiles(store, files) {
 export class ObjectStore {
   constructor() {
     this.objects = new Map();
+    // Generation: bumps whenever a NEW object joins the store. A fetch
+    // pack is a pure function of (wants, haves, depth, shallow, gen), so
+    // a pack cached under a generation is safe to reuse while the
+    // generation is unchanged; any object write bumps it and retires
+    // the cached pack. Re-adding an already-present oid does not bump.
+    this.gen = 0;
   }
 
   has(oid) {
@@ -161,14 +167,22 @@ export class ObjectStore {
   putObject(type, data) {
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
     const oid = hashObject(type, buffer);
-    if (!this.objects.has(oid)) this.objects.set(oid, { type, data: buffer });
+    if (!this.objects.has(oid)) {
+      this.objects.set(oid, { type, data: buffer });
+      this.gen += 1;
+    }
     return oid;
   }
 
   putExisting(type, data) {
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
     const oid = hashObject(type, buffer);
-    this.objects.set(oid, { type, data: buffer });
+    if (!this.objects.has(oid)) {
+      this.objects.set(oid, { type, data: buffer });
+      this.gen += 1;
+    } else {
+      this.objects.set(oid, { type, data: buffer });
+    }
     return oid;
   }
 
