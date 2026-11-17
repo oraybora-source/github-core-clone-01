@@ -23,12 +23,13 @@ function jsonBody(status, body, extra) {
 // workload GETs the same issue 2,000 times, and the view is a pure
 // function of the issue's fields. The entry carries the issue's
 // revision, so a patch retires it. A WeakMap, so a deleted repo's
-// issues are collected.
+// issues are collected. Stored as a Buffer, so sendResponse uses it
+// directly without a Buffer.from per request.
 const issueViewCache = new WeakMap();
 function cachedIssueView(issue) {
   const cached = issueViewCache.get(issue);
   if (cached && cached.rev === issue.rev) return cached.body;
-  const body = JSON.stringify(issueView(issue));
+  const body = Buffer.from(JSON.stringify(issueView(issue)), 'utf8');
   issueViewCache.set(issue, { rev: issue.rev, body });
   return body;
 }

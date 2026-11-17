@@ -51,10 +51,16 @@ function bearerToken(headers) {
 export function createForgeServer(forge, token) {
   const server = http.createServer(async (request, response) => {
     try {
-      const url = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`);
-      const pathname = url.pathname;
+      // Hot-path URL split without `new URL` (the constructor is the
+      // slowest part of a small request) and without building a query
+      // object when there is no query string — the read workload is
+      // 2,000 sequential GETs of one issue, and every microsecond per
+      // request is ~2 ms of workload time.
+      const rawUrl = request.url || '/';
+      const qIndex = rawUrl.indexOf('?');
+      const pathname = qIndex === -1 ? rawUrl : rawUrl.slice(0, qIndex);
       const method = request.method || 'GET';
-      const query = Object.fromEntries(url.searchParams.entries());
+      const query = qIndex === -1 ? {} : Object.fromEntries(new URLSearchParams(rawUrl.slice(qIndex + 1)).entries());
       const baseUrl = `http://${request.headers.host || '127.0.0.1'}`;
       const ctx = { token, baseUrl };
 
@@ -64,8 +70,10 @@ export function createForgeServer(forge, token) {
         return;
       }
 
-      // The git smart-HTTP surface: /{owner}/{repo}.git/...
-      const gitMatch = /^\/([^/]+)\/([^/]+)\.git\/(info\/refs|git-upload-pack|git-receive-pack)$/.exec(pathname);
+      // The git smart-HTTP surface: /{owner}/{repo}.git/... — the cheap
+      // substring pre-check keeps the regex off the REST/GraphQL/MCP
+      // paths, which are the hot ones.
+      const gitMatch = pathname.includes('.git/') ? /^\/([^/]+)\/([^/]+)\.git\/(info\/refs|git-upload-pack|git-receive-pack)$/.exec(pathname) : null;
       if (gitMatch) {
         const owner = decodeURIComponent(gitMatch[1]);
         const repoName = decodeURIComponent(gitMatch[2]);
@@ -126,9 +134,11 @@ export function createForgeServer(forge, token) {
         return;
       }
 
-      // The REST v3 API.
+      // The REST v3 API. GET and HEAD carry no body, so there is nothing
+      // to read — awaiting the request's 'end' event on every read would
+      // cost a Promise and an event round-trip per request.
       if (pathname.startsWith('/api/v3')) {
-        const body = await readBody(request);
+        const body = (method === 'GET' || method === 'HEAD') ? Buffer.alloc(0) : await readBody(request);
         const result = routeRest(forge, ctx, method, pathname, query, request.headers, body);
         if (result) {
           // Every REST reply carries a non-empty request id.
